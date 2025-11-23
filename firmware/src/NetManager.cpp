@@ -22,6 +22,7 @@ private:
 
         if (!_mgr->bleProvisionActive)
         {
+            Serial.println("⛔ 配网模式未激活，忽略配网请求");
             return;
         }
 
