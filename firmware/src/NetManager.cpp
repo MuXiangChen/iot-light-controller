@@ -197,7 +197,7 @@ void NetworkManager::checkNetwork()
     if (_currentNet == NET_NONE && !bleProvisionActive)
     {
         Serial.println("📡 WiFi 无网络 → 启动 BLE 配网模式");
-        startBLEProvisioning();
+        // startBLEProvisioning();
         bleProvisionActive = true;
         bleAssistActive = false;
     }
