@@ -1,5 +1,5 @@
 #include <Arduino.h>
-#include <NVS.h>
+#include <DeviceCore.h>
 #include "Button.h"
 #include "config.h"
 #include "NetManager.h"
@@ -7,7 +7,7 @@
 #include "MQTTManager.h"
 
 NetworkManager netManager;
-// NVS nvs;
+DeviceCore deviceCore;
 
 Button resetButton(RESET_PIN, []()
                    {
@@ -46,37 +46,38 @@ void onNetworkChange(NetworkType netType)
 //   Serial.printf("🔥 MQTT 收到: %s = %s\n", topic.c_str(), payload.c_str());
 // }
 
-String getDeviceID() {
-    uint64_t chipid = ESP.getEfuseMac();  // 获取 MAC（高 2 字节固定厂家 ID）
-    
-    char idStr[18]; // MAC 转文本: 6 字节 => 12 HEX + 5 分隔符 + 结束符
-    sprintf(idStr, "%02X:%02X:%02X:%02X:%02X:%02X",
-            (uint8_t)(chipid >> 40),
-            (uint8_t)(chipid >> 32),
-            (uint8_t)(chipid >> 24),
-            (uint8_t)(chipid >> 16),
-            (uint8_t)(chipid >> 8),
-            (uint8_t)(chipid));
-
-    return String(idStr);
-}
-
+#define UART1_RX 20
+#define UART1_TX 21
 
 void setup()
 {
   Serial.begin(115200);
 
-String deviceID = getDeviceID();
-Serial.println("📌 Device ID: " + deviceID);
+      //logging
+    Serial.println("DeviceCore initialized with config:");
+    Serial.println("  lightValue: " + String(deviceCore.lightValue));
+    Serial.println("  autoDim: " + String(deviceCore.autoDim));
+    Serial.println("  powerOn: " + String(deviceCore.powerOn));
+    Serial.println("  sensor_min: " + String(deviceCore.sensor_min));
+    Serial.println("  sensor_max: " + String(deviceCore.sensor_max));  
 
+
+// String deviceID =   deviceCore.getDeviceID();
+Serial.println("📌 Device ID: " + deviceCore.deviceID);
+  
+deviceCore.autoDimSetup(LDR_PIN, PWM_PIN);
 
   netManager.beginFromNVS();
-  netManager.startBLEProvisioning(deviceID);
+  netManager.setupBLEProvisioning(deviceCore.deviceID);
   netManager.setCallback(onNetworkChange);
+  // netManager.startAsyncScan();
   // netManager.set4GChecker([&]() -> bool
   //                         {
   //                           return modem.isNetworkReady(); // 4G 网络检测
   //                         });
+
+      // void scanForProvisioning();  // 自动配网
+
 
   // nvs.saveConfig();
   resetButton.begin();
@@ -88,7 +89,16 @@ void loop()
 {
   netManager.loop();
   resetButton.handle();
+  deviceCore.autoDimLogic();
   // mqtt.loop();
+
+  // while (Serial1.available()) 
+  // {
+  //   /* code */
+  //   char c = Serial1.read();
+  //   Serial.write(c);
+  // }
+  
 }
 
 /*

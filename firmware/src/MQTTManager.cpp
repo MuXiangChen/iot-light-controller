@@ -1,73 +1,114 @@
 #include "MQTTManager.h"
 
-extern LTEModule modem;  // 使用你已有的 4G 对象
+extern LTEModule modem; // 使用你已有的 4G 对象
 
-MQTTManager::MQTTManager(const char* host, int port)
-    : _host(host), _port(port), _mqtt(_wifiClient) {}
+static MQTTManager *mqttInstance = nullptr;
 
-void MQTTManager::begin(MsgCallback cb) {
-    _userCb = cb;
-    _mqtt.setServer(_host, _port);
-
-    // WiFi MQTT 回调转发
-    _mqtt.setCallback([this](char* topic, byte* payload, unsigned int len) {
-        onWiFiMessage(topic, payload, len);
-    });
+MQTTManager::MQTTManager() : _mqtt(_wifiClient)
+{
+    mqttInstance = this; // ⭐ 保存实例，供静态回调转发用
 }
 
-void MQTTManager::loop() {
-    if (_currentNet == NET_WIFI) {
+void MQTTManager::init()
+{
+    _host = "broker.hivemq.com";
+    _port = 1883;
+}
+
+void MQTTManager::setupCallback(MsgCallback cb)
+{
+    _userCb = cb;
+}
+
+void MQTTManager::setLTEModule(LTEModule *modem)
+{
+    _modem = modem;
+}
+
+void MQTTManager::connectViaWiFi()
+{
+    _currentNet = NET_WIFI;
+
+    _mqtt.setServer(_host, _port);
+    _mqtt.setCallback(MQTTManager::mqttCallback); // ⭐绑定静态转发器
+}
+
+void MQTTManager::connectVia4G()
+{
+    _currentNet = NET_4G;
+
+    if (_modem)
+    {
+        _modem->mqttConnect(_host, _port, "iot-device-client");
+    }
+}
+
+void MQTTManager::loop()
+{
+    if (_currentNet == NET_WIFI)
+    {
         _mqtt.loop();
     }
     // 4G 消息接收由 LTEModule.loop() 实现
 }
 
-void MQTTManager::reconnect(NetworkType netType) {
-    if (millis() - _lastRetry < 2000) return;
-    _lastRetry = millis();
+void MQTTManager::onMessage(char *topic, byte *payload, unsigned int length)
+{
+    String t = String(topic);
+    String p;
 
-    if (netType != _currentNet) {
-        Serial.printf("🔄 MQTT 切换网络模式: %d -> %d\n", _currentNet, netType);
-        _currentNet = netType;
+    for (uint i = 0; i < length; i++)
+    {
+        p += (char)payload[i];
     }
 
-    if (_currentNet == NET_WIFI) {
-        connectViaWiFi();
-    } else if (_currentNet == NET_4G) {
-        connectVia4G();
-    }
-}
+    Serial.printf("🔥 收到 MQTT: %s = %s\n", t.c_str(), p.c_str());
 
-bool MQTTManager::connectViaWiFi() {
-    Serial.println("🔌 MQTT over WiFi Connecting...");
-    if (_mqtt.connect("ESP32-WIFI-MQTT")) {
-        Serial.println("📶 WiFi MQTT Connected!");
-        _mqtt.subscribe("device/cmd");
-        return true;
-    }
-    Serial.println("⚠️ WiFi MQTT Connect Fail");
-    return false;
-}
-
-bool MQTTManager::connectVia4G() {
-    Serial.println("📡 MQTT over 4G Connecting...");
-
-        // ⭐ 设置 4G MQTT 回调
-    modem.setCallback([this](const String& topic, const String& payload){
-        Serial.printf("📥 MQTT 4G: %s -> %s\n", topic.c_str(), payload.c_str());
-        if (_userCb) _userCb(topic, payload); // 统一上抛
-    });
-    
-    return modem.mqttConnect(_host, _port, "ESP32-4G-MQTT",
-                             nullptr, nullptr,
-                             "device/cmd");
-}
-
-void MQTTManager::onWiFiMessage(char* topic, byte* payload, unsigned int length) {
-    String msg;
-    for (unsigned i = 0; i < length; i++) msg += (char)payload[i];
-
-    Serial.printf("📥 MQTT WiFi: %s -> %s\n", topic, msg.c_str());
     if (_userCb)
-        _userCb(String(topic), msg);
+    {
+        _userCb(t, p); // ⭐ 转发给用户代码
+    }
+}
+
+void MQTTManager::mqttCallback(char *topic, byte *payload, unsigned int length)
+{
+    if (mqttInstance)
+    {
+        mqttInstance->onMessage(topic, payload, length);
+    }
+}
+
+/********************************************
+ *  业务
+ ********************************************/
+
+void MQTTManager::sendLog(String message)
+{
+    if (_currentNet == NET_4G)
+    {
+        /* code */
+    }
+    else
+    {
+        if (_mqtt.connected())
+        {
+            _mqtt.publish("device/log", message.c_str());
+        }
+    }
+}
+
+void MQTTManager::sendDeviceInfo()
+{
+    if (_currentNet == NET_4G)
+    {
+        /* code */
+    }
+    else
+    {
+        if (_mqtt.connected())
+        {
+            String info = "{\"device\":\"iot-light-controller\",\"version\":\"1.0.0\"}";
+            _mqtt.publish("device/info", info.c_str());
+        }
+    }
 }

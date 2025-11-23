@@ -67,6 +67,25 @@ private:
     }
 };
 
+// BLE 扫描结果回调
+class ScanResultCallback : public BLEAdvertisedDeviceCallbacks {
+public:
+    ScanResultCallback(NetworkManager *mgr) : _mgr(mgr) {}
+private:
+    NetworkManager *_mgr;
+    void onResult(BLEAdvertisedDevice advertisedDevice) override {
+        // Serial.printf("🔍 发现设备: %s\n", advertisedDevice.toString().c_str());
+        
+        if (advertisedDevice.isAdvertisingService(BLEUUID(SERVICE_UUID))) {
+            Serial.println("✨ 匹配成功，保存设备进行后续连接!");
+            _mgr->provisionOtherDevice(advertisedDevice);
+        }
+
+        // ⭐ 发现目标设备后立即停止扫描
+        // BLEDevice::getScan()->stop();
+    }
+};
+
 // ---------- NetworkManager 实现 ----------
 NetworkManager::NetworkManager()
 {
@@ -91,7 +110,8 @@ void NetworkManager::beginFromNVS()
     if (ssid.isEmpty())
     {
         Serial.println("⚠️ NVS 没有 WiFi 配置，开启 BLE 配网");
-        startBLEProvisioning();
+        setupBLEProvisioning();
+        startAdvertising();
         bleProvisionActive = true;
         return;
     }
@@ -124,15 +144,10 @@ void NetworkManager::begin(const char *ssid, const char *pwd)
 void NetworkManager::loop()
 {
     checkNetwork();
-
-    if (!bleAssistActive)
-        return;
-
-    if (millis() - _lastProvisionScan > 10000)
-    {
-        _lastProvisionScan = millis();
-        scanForProvisioning();
-    }
+    
+    // if (bleAssistActive)
+    //     startAsyncScan();
+        // scanForProvisioning();
 }
 
 void NetworkManager::checkNetwork()
@@ -153,6 +168,9 @@ void NetworkManager::checkNetwork()
             credentialsSaved = true;
             saveCredentials();
             notifyStatus(SUCCESS);
+
+            bleProvisionActive = false;
+            stopAdvertising();
             Serial.println("🟢 WiFi 已连接，保存参数！");
         }
 
@@ -160,7 +178,7 @@ void NetworkManager::checkNetwork()
         {
             Serial.println("🔋 禁用 BLE 配网 → 启用辅助配网模式");
             // BLEDevice::deinit(true);
-            bleProvisionActive = false;
+            // bleProvisionActive = false;
             // BLEDevice::init("");
             bleAssistActive = true;
         }
@@ -199,12 +217,13 @@ void NetworkManager::checkNetwork()
     {
         Serial.println("📡 WiFi 无网络 → 启动 BLE 配网模式");
         // startBLEProvisioning();
+        startAdvertising();
         bleProvisionActive = true;
         bleAssistActive = false;
     }
 }
 
-void NetworkManager::startBLEProvisioning(String deviceName)
+void NetworkManager::setupBLEProvisioning(String deviceName)
 {
     Serial.println("📡 BLE 配网模式启动");
 
@@ -239,8 +258,21 @@ void NetworkManager::startBLEProvisioning(String deviceName)
 
     BLEAdvertising *advertising = server->getAdvertising();
     advertising->addServiceUUID(SERVICE_UUID);
-    BLEDevice::startAdvertising();
+    // BLEDevice::startAdvertising();
 }
+
+void NetworkManager::startAdvertising()
+{
+    BLEDevice::startAdvertising();
+    Serial.println("📡 BLE 广播已启动");
+}
+
+void NetworkManager::stopAdvertising()
+{
+    BLEDevice::stopAdvertising();
+    Serial.println("📡 BLE 广播已停止");
+}
+
 
 void NetworkManager::notifyStatus(uint8_t state)
 {
@@ -357,6 +389,11 @@ void NetworkManager::scanForProvisioning()
 }
 void NetworkManager::provisionOtherDevice(BLEAdvertisedDevice dev)
 {
+    if (!bleAssistActive || _currentNet != NET_WIFI)
+    {
+        /* code */
+    }
+    
     Serial.println("🔗 连接设备中...");
 
     BLEClient *client = BLEDevice::createClient();
@@ -387,17 +424,10 @@ void NetworkManager::provisionOtherDevice(BLEAdvertisedDevice dev)
         return;
     }
 
-    // ⭐ 从 NVS 获取当前 WiFi 信息
-    Preferences prefs;
-    prefs.begin("network", true);
-    String ssid = prefs.getString("ssid");
-    String pwd = prefs.getString("pwd");
-    prefs.end();
-
     Serial.println("📤 发送 SSID/PWD 给对方设备...");
-    ch_ssid->writeValue(ssid.c_str());
+    ch_ssid->writeValue(_ssid);
     delay(50);
-    ch_pwd->writeValue(pwd.c_str());
+    ch_pwd->writeValue(_pwd);
 
     Serial.println("🎯 配网指令已发送");
     client->disconnect();

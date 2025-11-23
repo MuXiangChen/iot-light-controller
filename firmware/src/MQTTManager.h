@@ -5,31 +5,36 @@
 #include "NetManager.h"
 #include "LTEModule.h"
 
-
-class MQTTManager {
+class MQTTManager
+{
 public:
-    using MsgCallback = std::function<void(String topic, String payload)>;
+    MQTTManager();
 
-    MQTTManager(const char* host, int port);
-    void begin(MsgCallback cb);
+    using MsgCallback = std::function<void(String topic, String payload)>;
+    void init();
+    void setupCallback(MsgCallback cb);
+
+    void setLTEModule(LTEModule *modem);
+
+    void connectViaWiFi();
+    void connectVia4G();
     void loop();
-    void reconnect(NetworkType netType);
+
+    void onMessage(char *topic, byte *payload, unsigned int length);
+    static void mqttCallback(char *topic, byte *payload, unsigned int length);
+
+    void sendLog(String message);
+    void sendDeviceInfo();
 
 private:
     WiFiClient _wifiClient;
     PubSubClient _mqtt;
+    LTEModule *_modem = nullptr;
 
-    const char* _host;
+    const char *_host;
     int _port;
 
     MsgCallback _userCb;
     NetworkType _currentNet = NET_NONE;
     uint32_t _lastRetry = 0;
-
-
-
-    bool connectViaWiFi();
-    bool connectVia4G();
-
-    void onWiFiMessage(char* topic, byte* payload, unsigned int length);
 };
