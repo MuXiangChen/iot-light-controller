@@ -46,12 +46,32 @@ void onNetworkChange(NetworkType netType)
 //   Serial.printf("🔥 MQTT 收到: %s = %s\n", topic.c_str(), payload.c_str());
 // }
 
+String getDeviceID() {
+    uint64_t chipid = ESP.getEfuseMac();  // 获取 MAC（高 2 字节固定厂家 ID）
+    
+    char idStr[18]; // MAC 转文本: 6 字节 => 12 HEX + 5 分隔符 + 结束符
+    sprintf(idStr, "%02X:%02X:%02X:%02X:%02X:%02X",
+            (uint8_t)(chipid >> 40),
+            (uint8_t)(chipid >> 32),
+            (uint8_t)(chipid >> 24),
+            (uint8_t)(chipid >> 16),
+            (uint8_t)(chipid >> 8),
+            (uint8_t)(chipid));
+
+    return String(idStr);
+}
+
+
 void setup()
 {
   Serial.begin(115200);
 
+String deviceID = getDeviceID();
+Serial.println("📌 Device ID: " + deviceID);
+
+
   netManager.beginFromNVS();
-  netManager.startBLEProvisioning();
+  netManager.startBLEProvisioning(deviceID);
   netManager.setCallback(onNetworkChange);
   // netManager.set4GChecker([&]() -> bool
   //                         {

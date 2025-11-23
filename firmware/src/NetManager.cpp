@@ -20,6 +20,11 @@ private:
     void onWrite(BLECharacteristic *ch) override
     {
 
+        if (!_mgr->bleProvisionActive)
+        {
+            return;
+        }
+
         if (_mgr->_currentNet == NET_WIFI)
         {
             Serial.println("⛔ 已联网，不接收配网请求");
@@ -119,7 +124,6 @@ void NetworkManager::loop()
 {
     checkNetwork();
 
-
     if (!bleAssistActive)
         return;
 
@@ -154,9 +158,9 @@ void NetworkManager::checkNetwork()
         if (!bleAssistActive)
         {
             Serial.println("🔋 禁用 BLE 配网 → 启用辅助配网模式");
-            BLEDevice::deinit(true);
+            // BLEDevice::deinit(true);
             bleProvisionActive = false;
-            BLEDevice::init("");
+            // BLEDevice::init("");
             bleAssistActive = true;
         }
         break;
@@ -199,11 +203,11 @@ void NetworkManager::checkNetwork()
     }
 }
 
-void NetworkManager::startBLEProvisioning()
+void NetworkManager::startBLEProvisioning(String deviceName)
 {
     Serial.println("📡 BLE 配网模式启动");
 
-    BLEDevice::init("ESP32-Provisioning");
+    BLEDevice::init(deviceName.c_str());
     BLEServer *server = BLEDevice::createServer();
     BLEService *service = server->createService(SERVICE_UUID);
 
@@ -231,6 +235,9 @@ void NetworkManager::startBLEProvisioning()
     wifiListChar->addDescriptor(new BLE2902());
 
     service->start();
+
+    BLEAdvertising *advertising = server->getAdvertising();
+    advertising->addServiceUUID(SERVICE_UUID);
     BLEDevice::startAdvertising();
 }
 
@@ -270,24 +277,29 @@ void NetworkManager::scanWifiList()
     Serial.println("📡 Scanning WiFi...");
 
     int n = WiFi.scanNetworks();
-    if (n <= 0) return;
+    if (n <= 0)
+        return;
 
     // Map 用于去重并保留最优信号
     std::map<String, int> wifiMap;
 
-    for (int i = 0; i < n; i++) {
+    for (int i = 0; i < n; i++)
+    {
         String ssid = WiFi.SSID(i);
         int rssi = WiFi.RSSI(i);
 
-        if (ssid.length() == 0) continue;
+        if (ssid.length() == 0)
+            continue;
 
-        if (!wifiMap.count(ssid) || rssi > wifiMap[ssid]) {
+        if (!wifiMap.count(ssid) || rssi > wifiMap[ssid])
+        {
             wifiMap[ssid] = rssi; // 只保留信号最强值
         }
     }
 
     // 逐条 Notify 给手机
-    for (auto &w : wifiMap) {
+    for (auto &w : wifiMap)
+    {
         String packet = w.first + "," + String(w.second);
         Serial.println("📤 " + packet);
 
@@ -302,9 +314,9 @@ void NetworkManager::scanWifiList()
 void NetworkManager::set4GChecker(std::function<bool()> checker) { _check4G = checker; }
 void NetworkManager::setCallback(NetCallback cb) { _callback = cb; }
 
-void NetworkManager::scanForProvisioning() {
-     // Placeholder for scanning BLE devices for provisioning
-
+void NetworkManager::scanForProvisioning()
+{
+    // Placeholder for scanning BLE devices for provisioning
 
     // 若当前没有网络 → 不给别人配网
     if (_currentNet == NET_NONE)
@@ -312,7 +324,7 @@ void NetworkManager::scanForProvisioning() {
 
     Serial.println("📡 网络正常，开始扫描其他设备用于配网...");
 
-    BLEDevice::init("");
+    // BLEDevice::init("");
     BLEScan *scan = BLEDevice::getScan();
     scan->setActiveScan(true);
     scan->setInterval(100);
@@ -342,7 +354,8 @@ void NetworkManager::scanForProvisioning() {
     scan->clearResults();
     Serial.println("🛑 扫描结束");
 }
-void NetworkManager::provisionOtherDevice(BLEAdvertisedDevice dev) {
+void NetworkManager::provisionOtherDevice(BLEAdvertisedDevice dev)
+{
     Serial.println("🔗 连接设备中...");
 
     BLEClient *client = BLEDevice::createClient();

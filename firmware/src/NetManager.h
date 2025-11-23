@@ -30,7 +30,7 @@ public:
     void set4GChecker(std::function<bool()> checker);
     void setCallback(NetCallback cb);
 
-    void startBLEProvisioning();
+    void startBLEProvisioning(String deviceName = "ESP32-Provisioning");
     void scanWifiList();
     void notifyStatus(uint8_t state);
     void saveCredentials();
@@ -41,11 +41,11 @@ public:
     
     const char* _ssid = nullptr;
     const char* _pwd  = nullptr;
-private:
-
+    
     bool credentialsSaved = false;
     bool bleProvisionActive = false;
     bool bleAssistActive = false;
+private:
 
     unsigned long _lastCheck = 0;
     unsigned long _lastProvisionScan = 0;
