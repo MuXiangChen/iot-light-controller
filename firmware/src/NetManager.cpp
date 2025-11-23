@@ -117,11 +117,8 @@ void NetworkManager::begin(const char *ssid, const char *pwd)
 
 void NetworkManager::loop()
 {
-    if (millis() - _lastCheck > 1000)
-    {
-        _lastCheck = millis();
-        checkNetwork();
-    }
+    checkNetwork();
+
 
     if (!bleAssistActive)
         return;
@@ -136,6 +133,11 @@ void NetworkManager::loop()
 void NetworkManager::checkNetwork()
 {
     wl_status_t s = WiFi.status();
+
+    if (s == _lastStatus)
+        return;
+
+    _lastStatus = s;
 
     switch (s)
     {

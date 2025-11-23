@@ -12,8 +12,9 @@ NetworkManager netManager;
 Button resetButton(RESET_PIN, []()
                    {
                      Serial.println("重置按钮按下！");
+                     netManager.clearCredentials();
                      // nvs.clearConfig();
-                     // esp_restart();
+                     esp_restart();
                    });
 
 // LTEModule modem(16, 17);

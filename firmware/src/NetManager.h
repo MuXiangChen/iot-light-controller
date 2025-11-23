@@ -52,6 +52,8 @@ private:
 
     std::function<bool()> _check4G = nullptr;
     NetCallback _callback = nullptr;
+        wl_status_t _lastStatus = WL_DISCONNECTED;
+
 
     BLECharacteristic* statusChar = nullptr;
     BLECharacteristic* scanReqChar = nullptr;
