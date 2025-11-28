@@ -15,13 +15,20 @@ DeviceCore::DeviceCore()
     uint64_t chipid = ESP.getEfuseMac(); // 获取 MAC（高 2 字节固定厂家 ID）
 
     char idStr[18]; // MAC 转文本: 6 字节 => 12 HEX + 5 分隔符 + 结束符
-    sprintf(idStr, "%02X:%02X:%02X:%02X:%02X:%02X",
+    sprintf(idStr, "%02X%02X%02X%02X%02X%02X",
             (uint8_t)(chipid >> 40),
             (uint8_t)(chipid >> 32),
             (uint8_t)(chipid >> 24),
             (uint8_t)(chipid >> 16),
             (uint8_t)(chipid >> 8),
             (uint8_t)(chipid));
+    // sprintf(idStr, "%02X:%02X:%02X:%02X:%02X:%02X",
+    //         (uint8_t)(chipid >> 40),
+    //         (uint8_t)(chipid >> 32),
+    //         (uint8_t)(chipid >> 24),
+    //         (uint8_t)(chipid >> 16),
+    //         (uint8_t)(chipid >> 8),
+    //         (uint8_t)(chipid));
     deviceID = String(idStr);
 }
 
@@ -124,8 +131,8 @@ void DeviceCore::autoDimLogic()
         }
 
         // 调试输出
-        Serial.printf("🌞 LDR(raw=%d, filt=%.1f, min=%d, max=%d) → Ratio=%.2f → Brightness=%d\n",
-                      rawLight, smoothLight, sensor_min, sensor_max, ratio, lastBrightness);
+        // Serial.printf("🌞 LDR(raw=%d, filt=%.1f, min=%d, max=%d) → Ratio=%.2f → Brightness=%d\n",
+        //               rawLight, smoothLight, sensor_min, sensor_max, ratio, lastBrightness);
     }
     else
     {

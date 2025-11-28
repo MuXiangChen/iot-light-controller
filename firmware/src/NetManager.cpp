@@ -1,6 +1,7 @@
 #include "NetManager.h"
 #include <Preferences.h>
 #include <BLE2902.h>
+#include "ScreenLog.h"
 
 #define SERVICE_UUID "12345678-1234-1234-1234-1234567890ab"
 #define CHARACTERISTIC_SSID "12345678-1234-1234-1234-1234567890ac"
@@ -22,13 +23,13 @@ private:
 
         if (!_mgr->bleProvisionActive)
         {
-            Serial.println("⛔ 配网模式未激活，忽略配网请求");
+            // // ScreenLog::instance().pushLog("bleProvisionActive false, ignoring WiFi info");
             return;
         }
 
         if (_mgr->_currentNet == NET_WIFI)
         {
-            Serial.println("⛔ 已联网，不接收配网请求");
+            // // ScreenLog::instance().pushLog("Already connected to WiFi, ignoring new credentials");
             return;
         }
 
@@ -36,17 +37,17 @@ private:
         if (ch->getUUID().toString() == CHARACTERISTIC_SSID)
         {
             _mgr->_ssid = strdup(val.c_str());
-            Serial.println("📥 新 SSID: " + String(_mgr->_ssid));
+            // // ScreenLog::instance().pushLog("New SSID: " + String(_mgr->_ssid));
         }
         if (ch->getUUID().toString() == CHARACTERISTIC_PWD)
         {
             _mgr->_pwd = strdup(val.c_str());
-            Serial.println("📥 新 Password");
+            // // ScreenLog::instance().pushLog("New Password");
         }
 
         if (_mgr->_ssid && _mgr->_pwd)
         {
-            Serial.println("🚀 已获取凭据，尝试连接 WiFi");
+            // // ScreenLog::instance().pushLog("attempting to connect to WiFi");
             _mgr->begin(_mgr->_ssid, _mgr->_pwd);
         }
     }
@@ -62,22 +63,25 @@ private:
     NetworkManager *_mgr;
     void onWrite(BLECharacteristic *) override
     {
-        Serial.println("📡 App 请求 WiFi 扫描");
+        // // ScreenLog::instance().pushLog("WiFi scan requested by app");
         _mgr->scanWifiList();
     }
 };
 
 // BLE 扫描结果回调
-class ScanResultCallback : public BLEAdvertisedDeviceCallbacks {
+class ScanResultCallback : public BLEAdvertisedDeviceCallbacks
+{
 public:
     ScanResultCallback(NetworkManager *mgr) : _mgr(mgr) {}
+
 private:
     NetworkManager *_mgr;
-    void onResult(BLEAdvertisedDevice advertisedDevice) override {
-        // Serial.printf("🔍 发现设备: %s\n", advertisedDevice.toString().c_str());
-        
-        if (advertisedDevice.isAdvertisingService(BLEUUID(SERVICE_UUID))) {
-            Serial.println("✨ 匹配成功，保存设备进行后续连接!");
+    void onResult(BLEAdvertisedDevice advertisedDevice) override
+    {
+
+        if (advertisedDevice.isAdvertisingService(BLEUUID(SERVICE_UUID)))
+        {
+            // // ScreenLog::instance().pushLog("device found +");
             _mgr->provisionOtherDevice(advertisedDevice);
         }
 
@@ -109,9 +113,10 @@ void NetworkManager::beginFromNVS()
 
     if (ssid.isEmpty())
     {
-        Serial.println("⚠️ NVS 没有 WiFi 配置，开启 BLE 配网");
-        setupBLEProvisioning();
-        startAdvertising();
+        Serial.println("No saved SSID, starting BLE provisioning");
+        // // ScreenLog::instance().pushLog("no saved SSID, starting BLE provisioning");
+        // setupBLEProvisioning();
+        // startAdvertising();
         bleProvisionActive = true;
         return;
     }
@@ -125,7 +130,9 @@ void NetworkManager::beginFromNVS()
         _pwd = strdup(pwd.c_str());
     }
 
-    Serial.printf("🔄 加载NVS SSID: %s, PWD: ******\n", _ssid);
+    // // ScreenLog::instance().pushLog("Loading NVS SSID: " + String(_ssid) + ", PWD: ******");
+
+    Serial.printf("Connecting to WiFi SSID: %s\n", _ssid);
 
     begin(_ssid, _pwd);
 }
@@ -137,23 +144,23 @@ void NetworkManager::begin(const char *ssid, const char *pwd)
     WiFi.mode(WIFI_STA);
     WiFi.setAutoReconnect(true);
     WiFi.begin(_ssid, _pwd);
-    Serial.println("📶 WiFi Connecting...");
+    // // ScreenLog::instance().pushLog("WiFi Connecting...");
     notifyStatus(CONNECTING);
 }
 
 void NetworkManager::loop()
 {
+    checkWifi();
     checkNetwork();
-    
+
     // if (bleAssistActive)
     //     startAsyncScan();
-        // scanForProvisioning();
+    // scanForProvisioning();
 }
 
-void NetworkManager::checkNetwork()
+void NetworkManager::checkWifi()
 {
     wl_status_t s = WiFi.status();
-
     if (s == _lastStatus)
         return;
 
@@ -162,70 +169,77 @@ void NetworkManager::checkNetwork()
     switch (s)
     {
     case WL_CONNECTED:
-        _currentNet = NET_WIFI;
         if (!credentialsSaved)
         {
             credentialsSaved = true;
             saveCredentials();
             notifyStatus(SUCCESS);
-
-            bleProvisionActive = false;
-            stopAdvertising();
-            Serial.println("🟢 WiFi 已连接，保存参数！");
+            // // ScreenLog::instance().pushLog("WiFi connected, credentials saved.");
         }
 
-        if (!bleAssistActive)
-        {
-            Serial.println("🔋 禁用 BLE 配网 → 启用辅助配网模式");
-            // BLEDevice::deinit(true);
-            // bleProvisionActive = false;
-            // BLEDevice::init("");
-            bleAssistActive = true;
-        }
+        // WiFi 连接后关闭 BLE 配网
+        bleProvisionActive = false;
+        bleAssistActive = true;
+        stopAdvertising();
         break;
 
     case WL_CONNECT_FAILED:
-        _currentNet = NET_NONE;
         notifyStatus(ERR_AUTH_FAIL);
         credentialsSaved = false;
-        Serial.println("❌ 密码错误");
+        // // ScreenLog::instance().pushLog("Password error");
         break;
 
     case WL_NO_SSID_AVAIL:
-        _currentNet = NET_NONE;
         notifyStatus(ERR_NO_AP_FOUND);
         credentialsSaved = false;
-        // print ssid for debug
-        Serial.println("🚫 SSID: " + String(_ssid));
-        Serial.println("🚫 找不到 AP");
+        // // ScreenLog::instance().pushLog("SSID Not Found: " + String(_ssid));
         break;
 
     default:
-        _currentNet = NET_NONE;
         notifyStatus(CONNECTING);
         break;
     }
 
-    if (_currentNet != _lastNet)
+    if (s != WL_CONNECTED && !bleProvisionActive)
     {
-        _lastNet = _currentNet;
-        if (_callback)
-            _callback(_currentNet);
-    }
+        // // ScreenLog::instance().pushLog("WiFi no network → Start BLE provisioning");
 
-    if (_currentNet == NET_NONE && !bleProvisionActive)
-    {
-        Serial.println("📡 WiFi 无网络 → 启动 BLE 配网模式");
-        // startBLEProvisioning();
         startAdvertising();
         bleProvisionActive = true;
         bleAssistActive = false;
+    }
+
+    Serial.printf("WiFi status changed: %d\n", s);
+}
+
+void NetworkManager::checkNetwork()
+{
+    bool wifiOK = (WiFi.status() == WL_CONNECTED);
+    bool lteOK  = _lteStatus;
+
+    NetworkType newNet;
+
+    if (wifiOK)
+        newNet = NET_WIFI;
+    else if (lteOK)
+        newNet = NET_4G;
+    else
+        newNet = NET_NONE;
+
+
+    if (newNet != _lastNet)
+    {
+        _lastNet = newNet;
+        _currentNet = newNet;
+
+        if (_callback)
+            _callback(newNet);
     }
 }
 
 void NetworkManager::setupBLEProvisioning(String deviceName)
 {
-    Serial.println("📡 BLE 配网模式启动");
+    // // ScreenLog::instance().pushLog("Starting BLE provisioning mode");
 
     BLEDevice::init(deviceName.c_str());
     BLEServer *server = BLEDevice::createServer();
@@ -264,15 +278,14 @@ void NetworkManager::setupBLEProvisioning(String deviceName)
 void NetworkManager::startAdvertising()
 {
     BLEDevice::startAdvertising();
-    Serial.println("📡 BLE 广播已启动");
+    // // ScreenLog::instance().pushLog("BLE advertising started");
 }
 
 void NetworkManager::stopAdvertising()
 {
     BLEDevice::stopAdvertising();
-    Serial.println("📡 BLE 广播已停止");
+    // // ScreenLog::instance().pushLog("BLE advertising stopped");
 }
-
 
 void NetworkManager::notifyStatus(uint8_t state)
 {
@@ -290,7 +303,7 @@ void NetworkManager::saveCredentials()
     pref.putString("ssid", _ssid);
     pref.putString("pwd", _pwd);
     pref.end();
-    Serial.println("💾 WiFi 配置已保存");
+    // // ScreenLog::instance().pushLog("WiFi credentials saved");
 }
 
 void NetworkManager::clearCredentials()
@@ -299,7 +312,7 @@ void NetworkManager::clearCredentials()
     pref.begin("network", false);
     pref.clear();
     pref.end();
-    Serial.println("🗑️ WiFi 配置已清除");
+    // // ScreenLog::instance().pushLog("WiFi credentials cleared");
 }
 
 void NetworkManager::scanWifiList()
@@ -307,7 +320,7 @@ void NetworkManager::scanWifiList()
     // 若重新扫描，重置保存状态
     credentialsSaved = false;
 
-    Serial.println("📡 Scanning WiFi...");
+    // // ScreenLog::instance().pushLog("Scanning WiFi...");
 
     int n = WiFi.scanNetworks();
     if (n <= 0)
@@ -334,17 +347,18 @@ void NetworkManager::scanWifiList()
     for (auto &w : wifiMap)
     {
         String packet = w.first + "," + String(w.second);
-        Serial.println("📤 " + packet);
+        // // ScreenLog::instance().pushLog("info: " + packet);
 
         wifiListChar->setValue(packet.c_str());
         wifiListChar->notify();
         delay(50);
     }
 
-    Serial.printf("📶 WiFi列表发送完毕，共 %d 条\n", wifiMap.size());
+    // // ScreenLog::instance().pushLog("WiFi list sent, total " + String(wifiMap.size()) + " entries");
 }
 
-void NetworkManager::set4GChecker(std::function<bool()> checker) { _check4G = checker; }
+void NetworkManager::set4Gstatus(bool status) { _lteStatus = status; }
+
 void NetworkManager::setCallback(NetCallback cb) { _callback = cb; }
 
 void NetworkManager::scanForProvisioning()
@@ -355,7 +369,7 @@ void NetworkManager::scanForProvisioning()
     if (_currentNet == NET_NONE)
         return;
 
-    Serial.println("📡 网络正常，开始扫描其他设备用于配网...");
+    // // ScreenLog::instance().pushLog("Network normal, scanning other devices for provisioning...");
 
     // BLEDevice::init("");
     BLEScan *scan = BLEDevice::getScan();
@@ -366,7 +380,7 @@ void NetworkManager::scanForProvisioning()
     BLEScanResults results = scan->start(5, false);
 
     int count = results.getCount();
-    Serial.printf("🔍 扫描到 %d 个 BLE 广播设备\n", count);
+    // // ScreenLog::instance().pushLog("Scanned " + String(count) + " BLE advertising devices");
 
     for (int i = 0; i < count; i++)
     {
@@ -375,7 +389,7 @@ void NetworkManager::scanForProvisioning()
         if (dev.haveServiceUUID() &&
             dev.isAdvertisingService(BLEUUID(SERVICE_UUID)))
         {
-            Serial.println("✨ 找到待配网设备！尝试连接...");
+            // // ScreenLog::instance().pushLog("Found device for provisioning! Trying to connect...");
 
             // ⚡ 启动给对方配网流程
             provisionOtherDevice(dev);
@@ -385,7 +399,7 @@ void NetworkManager::scanForProvisioning()
     }
 
     scan->clearResults();
-    Serial.println("🛑 扫描结束");
+    // Serial.println("🛑 扫描结束");
 }
 void NetworkManager::provisionOtherDevice(BLEAdvertisedDevice dev)
 {
@@ -393,23 +407,22 @@ void NetworkManager::provisionOtherDevice(BLEAdvertisedDevice dev)
     {
         /* code */
     }
-    
-    Serial.println("🔗 连接设备中...");
 
+    // // ScreenLog::instance().pushLog("Connecting to device...");
     BLEClient *client = BLEDevice::createClient();
     if (!client->connect(&dev))
     {
-        Serial.println("❌ 连接失败");
+        // // ScreenLog::instance().pushLog("Connection failed");
         return;
     }
-    Serial.println("🔗 已连接");
+    // // ScreenLog::instance().pushLog("Connected");
 
     BLERemoteService *service =
         client->getService(BLEUUID(SERVICE_UUID));
 
     if (!service)
     {
-        Serial.println("❌ 无配网服务");
+        // // ScreenLog::instance().pushLog("No provisioning service found");
         client->disconnect();
         return;
     }
@@ -419,16 +432,16 @@ void NetworkManager::provisionOtherDevice(BLEAdvertisedDevice dev)
 
     if (!ch_ssid || !ch_pwd)
     {
-        Serial.println("❌ 未找到配网特征值");
+        // // ScreenLog::instance().pushLog("No provisioning characteristics found");
         client->disconnect();
         return;
     }
 
-    Serial.println("📤 发送 SSID/PWD 给对方设备...");
+    // // ScreenLog::instance().pushLog("Sending SSID/PWD to the device...");
     ch_ssid->writeValue(_ssid);
     delay(50);
     ch_pwd->writeValue(_pwd);
 
-    Serial.println("🎯 配网指令已发送");
+    // // ScreenLog::instance().pushLog("Provisioning command sent");
     client->disconnect();
 }

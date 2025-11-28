@@ -36,12 +36,14 @@ class NetworkManager
 public:
     using NetCallback = std::function<void(NetworkType)>;
 
+    String deviceID;
+
     NetworkManager();
     void beginFromNVS();
     void begin(const char *ssid, const char *pwd);
     void loop();
 
-    void set4GChecker(std::function<bool()> checker);
+    void set4Gstatus(bool status);
     void setCallback(NetCallback cb);
 
     void setupBLEProvisioning(String deviceName = "ESP32-Provisioning");
@@ -67,7 +69,7 @@ public:
     BLEAdvertisedDevice _targetDev;
     BLEClient *_provClient = nullptr;
     unsigned long _provTimer = 0;
-    
+
     // void startAsyncScan();
     void scanForProvisioning();
     void provisionOtherDevice(BLEAdvertisedDevice dev);
@@ -76,7 +78,7 @@ private:
     unsigned long _lastCheck = 0;
     unsigned long _lastProvisionScan = 0;
 
-    std::function<bool()> _check4G = nullptr;
+    bool _lteStatus = false;
     NetCallback _callback = nullptr;
     wl_status_t _lastStatus = WL_DISCONNECTED;
 
@@ -87,6 +89,6 @@ private:
     // bool scanInProgress = false;
 
     void checkNetwork();
+    void checkWifi();
     // void scanForProvisioning1();
-
 };

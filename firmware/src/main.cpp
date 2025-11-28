@@ -3,8 +3,11 @@
 #include "Button.h"
 #include "config.h"
 #include "NetManager.h"
-#include "LTEModule.h"
 #include "MQTTManager.h"
+#include "ScreenLog.h"
+#include "ScreenUI.h"
+#include <WiFi.h>
+// #include <WiFiClientSecure.h>
 
 NetworkManager netManager;
 DeviceCore deviceCore;
@@ -13,92 +16,121 @@ Button resetButton(RESET_PIN, []()
                    {
                      Serial.println("重置按钮按下！");
                      netManager.clearCredentials();
+                     deviceCore.clearConfig();
                      // nvs.clearConfig();
-                     esp_restart();
-                   });
+                     esp_restart(); });
 
-// LTEModule modem(16, 17);
-// MQTTManager mqtt("broker.hivemq.com", 1883);
+WiFiClient wifiClient;
+// WiFiClientSecure wifiClientSecure;
+
+#if BUILD_WITH_4G
+
+#define TINY_GSM_MODEM_ML307
+#include <TinyGsmClientML307.h>
+
+HardwareSerial ModemSerial(1);
+TinyGsmML307 modem(ModemSerial);
+TinyGsmML307::GsmClientML307 lteClient(modem);
+
+MQTTManager mqtt(&wifiClient, &lteClient);
+#else
+
+MQTTManager mqtt(&wifiClient);
+
+#endif
 
 void onNetworkChange(NetworkType netType)
 {
-  Serial.printf("🛜 网络切换为: %d，开始处理 MQTT...\n", netType);
-
-  // mqtt.reconnect(netType);
+  ScreenUI::instance().setNetworkStatus(netType);
 
   if (netType == NET_WIFI)
   {
-    // mqtt.connectWiFi(); // 你自己的 MQTT 连接逻辑
+    mqtt.selectWiFi();
   }
   else if (netType == NET_4G)
   {
-    // mqtt.connect4G();   // 调用 FourGModem->mqttConnect()
+    mqtt.select4G();
   }
   else
   {
-    Serial.println("⚠️ 无网络，断开 MQTT 连接");
-    // mqtt.disconnect(); // 无网络
+    // 无网络
   }
 }
 
-// void onMqttMsg(String topic, String payload)
-// {
-//   Serial.printf("🔥 MQTT 收到: %s = %s\n", topic.c_str(), payload.c_str());
-// }
-
-#define UART1_RX 20
-#define UART1_TX 21
+void onMqttMsg(String topic, JsonDocument doc)
+{
+  Serial.printf("🔥 MQTT 收到: %s = %s\n", topic.c_str(), doc.as<String>().c_str());
+}
 
 void setup()
 {
+  // ScreenLog::instance().begin(OLED_SDA, OLED_SCL, 0x3C);
+
   Serial.begin(115200);
 
-      //logging
-    Serial.println("DeviceCore initialized with config:");
-    Serial.println("  lightValue: " + String(deviceCore.lightValue));
-    Serial.println("  autoDim: " + String(deviceCore.autoDim));
-    Serial.println("  powerOn: " + String(deviceCore.powerOn));
-    Serial.println("  sensor_min: " + String(deviceCore.sensor_min));
-    Serial.println("  sensor_max: " + String(deviceCore.sensor_max));  
+  String deviceID = deviceCore.deviceID;
+  ScreenUI::instance().begin(OLED_SDA, OLED_SCL);
+  ScreenUI::instance().setDeviceId(deviceID);
 
-
-// String deviceID =   deviceCore.getDeviceID();
-Serial.println("📌 Device ID: " + deviceCore.deviceID);
-  
-deviceCore.autoDimSetup(LDR_PIN, PWM_PIN);
-
-  netManager.beginFromNVS();
-  netManager.setupBLEProvisioning(deviceCore.deviceID);
-  netManager.setCallback(onNetworkChange);
-  // netManager.startAsyncScan();
-  // netManager.set4GChecker([&]() -> bool
-  //                         {
-  //                           return modem.isNetworkReady(); // 4G 网络检测
-  //                         });
-
-      // void scanForProvisioning();  // 自动配网
-
-
-  // nvs.saveConfig();
+  deviceCore.autoDimSetup(LDR_PIN, PWM_PIN);
   resetButton.begin();
-  // modem.begin();
-  // mqtt.begin(onMqttMsg);
+
+  netManager.deviceID = deviceID;
+  netManager.beginFromNVS();
+  netManager.setCallback(onNetworkChange);
+  netManager.setupBLEProvisioning(deviceID);
+  netManager.startAdvertising();
+
+  // void scanForProvisioning();  // 自动配网
+
+#if BUILD_WITH_4G
+  ModemSerial.begin(115200, SERIAL_8N1, UART_RX, UART_TX);
+  delay(300);
+  // 读取 Modem 信息
+  String modemInfo = modem.getModemInfo();
+  Serial.println("Modem Info: " + modemInfo);
+  netManager.set4Gstatus(modem.isNetworkConnected());
+
+  // wifiClientSecure.setCACert(ca_cert);
+#else
+  // wifiClientSecure.setCACert(ca_cert);
+  Serial.println("Build without 4G support.");
+#endif
+
+  /********************************************
+   *  mqtt
+   ********************************************/
+  mqtt.deviceID = deviceID;
+  mqtt.init();
+  mqtt.setupCallback(onMqttMsg);
 }
 
 void loop()
 {
+#if BUILD_WITH_4G
+  static unsigned long last = 0;
+  if (millis() - last > 3000)
+  {
+    last = millis();
+    netManager.set4Gstatus(modem.isNetworkConnected());
+  }
+#endif
+
   netManager.loop();
+  mqtt.loop();
+
+  static unsigned long mqttlast = 0;
+
+  if (millis() - mqttlast > 3000)
+  {
+    mqttlast = millis();
+    ScreenUI::instance().setMqttStatus(mqtt.connected());
+  }
+
   resetButton.handle();
   deviceCore.autoDimLogic();
-  // mqtt.loop();
 
-  // while (Serial1.available()) 
-  // {
-  //   /* code */
-  //   char c = Serial1.read();
-  //   Serial.write(c);
-  // }
-  
+  ScreenUI::instance().render();
 }
 
 /*
