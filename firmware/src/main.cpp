@@ -39,6 +39,10 @@ MQTTManager mqtt(&wifiClient);
 
 #endif
 
+
+#define KNOB_PIN 4   // 使用 GPIO4 = ADC1_CH3
+
+
 void onNetworkChange(NetworkType netType)
 {
   ScreenUI::instance().setNetworkStatus(netType);
@@ -60,6 +64,46 @@ void onNetworkChange(NetworkType netType)
 void onMqttMsg(String topic, JsonDocument doc)
 {
   Serial.printf("🔥 MQTT 收到: %s = %s\n", topic.c_str(), doc.as<String>().c_str());
+
+  if (doc.containsKey("power"))
+  {
+    deviceCore.powerOn = doc["power"];
+    deviceCore.saveConfig();
+  }
+
+  if (doc.containsKey("mode"))
+  {
+    String modeStr = doc["mode"].as<String>();
+    deviceCore.autoDim = (modeStr == "auto");
+    deviceCore.saveConfig();
+  }
+
+  if (doc.containsKey("brightness"))
+  {
+    float brightness = doc["brightness"].as<float>();
+    deviceCore.lightValue = constrain(int(brightness * 25.5), 0, 255);
+    deviceCore.saveConfig();
+  }
+
+  if (doc.containsKey("markMax"))
+  {
+    bool state = doc["markMax"];
+    if (state)
+    {
+      deviceCore.sensor_max = analogRead(LDR_PIN);
+      deviceCore.saveConfig();
+    }    
+  }
+
+  if (doc.containsKey("markMin"))
+  {
+    bool state = doc["markMin"];
+    if (state)
+    {
+      deviceCore.sensor_min = analogRead(LDR_PIN);
+      deviceCore.saveConfig();
+    }   
+  }
 }
 
 void setup()
@@ -103,6 +147,8 @@ void setup()
   mqtt.deviceID = deviceID;
   mqtt.init();
   mqtt.setupCallback(onMqttMsg);
+
+  pinMode(KNOB_PIN, INPUT);
 }
 
 void loop()
@@ -131,6 +177,14 @@ void loop()
   deviceCore.autoDimLogic();
 
   ScreenUI::instance().render();
+
+
+  //   int value = analogRead(KNOB_PIN);  // 读取旋钮电压
+  //   deviceCore.lightValue = map(value, 0, 4095, 0, 255); // 映射到 0-255 范围
+
+
+  // Serial.print("Light value: ");
+  // Serial.println(deviceCore.lightValue);
 }
 
 /*

@@ -69,6 +69,10 @@ void DeviceCore::autoDimSetup(int sensorPin, int pwmPin)
 
 void DeviceCore::autoDimLogic()
 {
+            // ledcWrite(0, lightValue);
+            // return;
+
+
     // 自动亮度（每0.3秒执行一次）
     unsigned long now = millis();
     if (now - lastLDRCheck < 300)

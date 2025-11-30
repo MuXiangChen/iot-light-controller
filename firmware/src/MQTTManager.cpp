@@ -77,11 +77,19 @@ void MQTTManager::connectIfNeeded()
 
     String clientId = "ESP32Client-" + deviceID;
 
-    _mqtt.connect(clientId.c_str(), "emqx", "public");
+    if (_mqtt.connect(clientId.c_str(), "emqx", "public"))
+    {
+        /* code */
+        Serial.println("✅ MQTT 已连接");
+        
+        _mqtt.subscribe(topicControl);
+              
+        _mqtt.publish(topicBootReport, deviceID.c_str());
+    }
+    
 
-    _mqtt.subscribe(topicControl);
-          
-    _mqtt.publish(topicBootReport, deviceID.c_str());
+
+    Serial.println("🔌 MQTT 连接中...");
 }
 
 // ----------------------------------------------------------------------
