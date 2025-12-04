@@ -8,10 +8,11 @@
 #include "ScreenUI.h"
 #include <WiFi.h>
 // #include <WiFiClientSecure.h>
+#include "LEDStatus.h"
 
 NetworkManager netManager;
 DeviceCore deviceCore;
-
+LEDStatus ledStatus(RGB_PIN);
 Button resetButton(RESET_PIN, []()
                    {
                      Serial.println("重置按钮按下！");
@@ -39,10 +40,6 @@ MQTTManager mqtt(&wifiClient);
 
 #endif
 
-
-#define KNOB_PIN 4   // 使用 GPIO4 = ADC1_CH3
-
-
 void onNetworkChange(NetworkType netType)
 {
   ScreenUI::instance().setNetworkStatus(netType);
@@ -50,14 +47,17 @@ void onNetworkChange(NetworkType netType)
   if (netType == NET_WIFI)
   {
     mqtt.selectWiFi();
+    ledStatus.changeColor(LED_GREEN);
   }
   else if (netType == NET_4G)
   {
     mqtt.select4G();
+    ledStatus.changeColor(LED_GREEN);
   }
   else
   {
     // 无网络
+    ledStatus.changeColor(LED_RED);
   }
 }
 
@@ -92,7 +92,7 @@ void onMqttMsg(String topic, JsonDocument doc)
     {
       deviceCore.sensor_max = analogRead(LDR_PIN);
       deviceCore.saveConfig();
-    }    
+    }
   }
 
   if (doc.containsKey("markMin"))
@@ -102,7 +102,7 @@ void onMqttMsg(String topic, JsonDocument doc)
     {
       deviceCore.sensor_min = analogRead(LDR_PIN);
       deviceCore.saveConfig();
-    }   
+    }
   }
 }
 
@@ -118,6 +118,8 @@ void setup()
 
   deviceCore.autoDimSetup(LDR_PIN, PWM_PIN);
   resetButton.begin();
+  ledStatus.begin();
+  ledStatus.changeColor(LED_BLUE);
 
   netManager.deviceID = deviceID;
   netManager.beginFromNVS();
@@ -147,8 +149,6 @@ void setup()
   mqtt.deviceID = deviceID;
   mqtt.init();
   mqtt.setupCallback(onMqttMsg);
-
-  pinMode(KNOB_PIN, INPUT);
 }
 
 void loop()
@@ -178,10 +178,8 @@ void loop()
 
   ScreenUI::instance().render();
 
-
   //   int value = analogRead(KNOB_PIN);  // 读取旋钮电压
   //   deviceCore.lightValue = map(value, 0, 4095, 0, 255); // 映射到 0-255 范围
-
 
   // Serial.print("Light value: ");
   // Serial.println(deviceCore.lightValue);
